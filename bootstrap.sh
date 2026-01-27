@@ -222,11 +222,72 @@ check_wsl() {
   fi
 }
 
+# ── Python Packages (document processing & data analysis) ────────────────────
+# These support non-developer consulting workflows: Excel, Word, PowerPoint,
+# data analysis, charting, and table image generation.
+REQUIRED_PIP_PACKAGES=(
+  "openpyxl"         # Excel (.xlsx) read/write
+  "python-docx"      # Word (.docx) reports
+  "python-pptx"      # PowerPoint (.pptx) decks
+  "pandas"           # DataFrames, aggregation, pivot tables
+  "seaborn"          # Charts, graphs, heatmaps
+  "matplotlib"       # Plotting engine (seaborn dependency)
+  "dataframe_image"  # Export tables as PNG for doc embedding
+)
+
+check_pip_packages() {
+  info "Checking Python packages for document processing..."
+  local missing=()
+
+  for pkg in "${REQUIRED_PIP_PACKAGES[@]}"; do
+    local import_name="${pkg//-/_}"
+    if python3 -c "import ${import_name}" 2>/dev/null; then
+      ok "  ${pkg} installed"
+    else
+      missing+=("$pkg")
+      warn "  ${pkg} — NOT FOUND"
+    fi
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    if [[ "$CHECK_ONLY" -eq 1 ]]; then
+      warn "Missing packages: ${missing[*]}"
+      REQUIRED_MISSING=1
+      return 1
+    fi
+
+    if confirm "Install missing packages (${missing[*]}) with pip?"; then
+      pip install --user "${missing[@]}" 2>/dev/null \
+        || pip install --break-system-packages --user "${missing[@]}" 2>/dev/null \
+        || pip3 install --user "${missing[@]}" 2>/dev/null
+      local still_missing=()
+      for pkg in "${missing[@]}"; do
+        local import_name="${pkg//-/_}"
+        if ! python3 -c "import ${import_name}" 2>/dev/null; then
+          still_missing+=("$pkg")
+        fi
+      done
+      if [[ ${#still_missing[@]} -gt 0 ]]; then
+        warn "Failed to install: ${still_missing[*]}"
+        REQUIRED_MISSING=1
+        return 1
+      fi
+      ok "All packages installed"
+    else
+      REQUIRED_MISSING=1
+      return 1
+    fi
+  else
+    ok "All document-processing packages present"
+  fi
+}
+
 info "=== ForgeVista UAP Core Bootstrap ==="
 info "Setting up your machine for Claude Code..."
 
 check_wsl
 check_python
+check_pip_packages
 check_claude
 check_uv
 check_node
